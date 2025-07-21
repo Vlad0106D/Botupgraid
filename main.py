@@ -4,7 +4,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from flask import Flask
 
 # Читаем токен из переменных окружения
-TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+TOKEN = os.getenv('8000528742:AAHn7SEq5pS3q98VMTBJtCeXwaguMUmrYwE')
 
 app = Flask(__name__)
 
