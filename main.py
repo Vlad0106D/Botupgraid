@@ -1,34 +1,25 @@
-from flask import Flask
-import threading
 import os
-from telegram.ext import Updater, CommandHandler
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from flask import Flask
+
+# Читаем токен из переменных окружения
+TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
 app = Flask(__name__)
 
-@app.route("/")
+@app.route('/')
 def index():
     return "Flask работает вместе с Telegram-ботом!"
 
-def run_flask():
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
-
-def start(update, context):
-    update.message.reply_text("Привет! Я твой Telegram-бот.")
+# Обработчик команды /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text('Привет! Я бот.')
 
 def run_bot():
-    TOKEN = "776505127:AAHMC24Ax14hw_3dykAXg3U0d6JDTRkzF9E"
+    application = ApplicationBuilder().token(TOKEN).build()
+    application.add_handler(CommandHandler('start', start))
+    application.run_polling()
 
-    updater = Updater(TOKEN, use_context=True)
-    dispatcher = updater.dispatcher
-
-    dispatcher.add_handler(CommandHandler("start", start))
-
-    updater.start_polling()
-    updater.idle()
-
-if __name__ == "__main__":
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.start()
-
+if __name__ == '__main__':
     run_bot()
