@@ -1,45 +1,45 @@
 from flask import Flask
-from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from strategies import generate_signals
+from telegram import Update
+import threading
 import asyncio
 
-# --- Токен Telegram ---
-TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
+# Импорт стратегии
+from strategies import generate_signals
 
-# --- Flask ---
+TOKEN = "твой_токен_бота"
+
 app = Flask(__name__)
 
 @app.route("/")
 def index():
-    return "✅ Бот и веб-интерфейс работают"
+    return "Бот и веб-интерфейс работают ✅"
 
-# --- Команда /start ---
+# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🤖 Бот запущен и работает!")
+    await update.message.reply_text("Бот запущен ✅")
 
-# --- Команда /signal ---
+# Команда /signal
 async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     signals, explanation, timestamp = generate_signals()
-    text = f"📊 Сигналы на {timestamp}:\n\n"
-    for pair, sig in signals.items():
+    msg = f"📊 Сигналы на {timestamp}:\n\n"
+    for pair, action in signals.items():
         reason = explanation.get(pair, "")
-        text += f"• {pair}: {sig} — {reason}\n"
-    await update.message.reply_text(text)
+        msg += f"{pair}: {action} — {reason}\n"
+    await update.message.reply_text(msg)
 
-# --- Главный запуск ---
-async def main():
+async def run_bot():
     app_bot = ApplicationBuilder().token(TOKEN).build()
     app_bot.add_handler(CommandHandler("start", start))
     app_bot.add_handler(CommandHandler("signal", signal))
+    await app_bot.initialize()
+    await app_bot.start()
+    await app_bot.updater.start_polling()
+    await app_bot.updater.idle()
 
-    # Запуск Flask в фоне
-    loop = asyncio.get_event_loop()
-    loop.create_task(asyncio.to_thread(app.run, host="0.0.0.0", port=10000))
+def run_flask():
+    app.run(host="0.0.0.0", port=10000)
 
-    # Запуск Telegram-бота
-    await app_bot.run_polling()
-
-# --- Запуск ---
 if __name__ == "__main__":
-    asyncio.run(main())
+    threading.Thread(target=run_flask).start()
+    asyncio.run(run_bot())
