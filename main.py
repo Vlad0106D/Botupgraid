@@ -3,7 +3,7 @@ import logging
 from quart import Quart, request
 from telegram import Update
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+    ApplicationBuilder, CommandHandler, ContextTypes
 )
 
 TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
@@ -16,15 +16,21 @@ logging.basicConfig(level=logging.INFO)
 app = Quart(__name__)
 telegram_app = None
 
-# Активные стратегии (в памяти)
-active_strategies = []
+# 🔧 Список стратегий
+default_strategies = [
+    "Комплексный технический анализ",
+    "Приток/отток капитала",
+    "RSI + MA",
+    "Momentum + Bollinger",
+    "Открытый интерес + объем"
+]
+active_strategies = default_strategies.copy()
 
 @app.before_serving
 async def before_serving():
     global telegram_app
     telegram_app = ApplicationBuilder().token(TOKEN).build()
 
-    # Регистрация команд
     telegram_app.add_handler(CommandHandler("start", start))
     telegram_app.add_handler(CommandHandler("help", help_command))
     telegram_app.add_handler(CommandHandler("strategy", strategy))
@@ -33,7 +39,7 @@ async def before_serving():
 
     await telegram_app.initialize()
     await telegram_app.bot.set_webhook(WEBHOOK_URL)
-    logging.info("Webhook set.")
+    logging.info("Webhook установлен.")
     await telegram_app.start()
 
 
@@ -81,7 +87,7 @@ async def strategy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def add_strategy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Укажи название стратегии. Пример: /addstrategy RSI-Momentum")
+        await update.message.reply_text("Укажи название стратегии. Пример: /addstrategy RSI + MA")
         return
 
     name = " ".join(context.args)
@@ -94,7 +100,7 @@ async def add_strategy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def remove_strategy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Укажи название стратегии. Пример: /removestrategy RSI-Momentum")
+        await update.message.reply_text("Укажи название стратегии. Пример: /removestrategy RSI + MA")
         return
 
     name = " ".join(context.args)
