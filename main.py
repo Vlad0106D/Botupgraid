@@ -2,6 +2,7 @@ from flask import Flask
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from telegram import Update
 import threading
+import asyncio
 
 from strategies import generate_signals
 
@@ -27,18 +28,24 @@ async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += f"{pair}: {action} — {reason}\n"
     await update.message.reply_text(msg)
 
-# Функция запуска Telegram-бота (в отдельном потоке, без asyncio)
-def run_telegram_bot():
-    app_bot = ApplicationBuilder().token(TOKEN).build()
-    app_bot.add_handler(CommandHandler("start", start))
-    app_bot.add_handler(CommandHandler("signal", signal))
-    app_bot.run_polling()  # <- блокирующий вызов, безопасен в отдельном потоке
+# Асинхронная функция запуска бота
+async def run_bot():
+    application = ApplicationBuilder().token(TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("signal", signal))
+    await application.run_polling()
 
-# Запуск Flask
+# Поток, в котором мы создаём loop и запускаем бота
+def run_bot_thread():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(run_bot())
+
+# Flask запуск в отдельном потоке
 def run_flask():
     app.run(host="0.0.0.0", port=10000)
 
 # Главный запуск
 if __name__ == "__main__":
     threading.Thread(target=run_flask).start()
-    threading.Thread(target=run_telegram_bot).start()
+    threading.Thread(target=run_bot_thread).start()
