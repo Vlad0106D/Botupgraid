@@ -1,105 +1,58 @@
-import asyncio
+import os
 import logging
-from telegram import Update
+import asyncio
+from quart import Quart, jsonify
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from quart import Quart
-import httpx
-import numpy as np
+from telegram import Update
 
-TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
-PAIRS = ["bitcoin", "ethereum", "solana", "ripple"]
-VS_CURRENCY = "usd"
+from strategy import check_all_strategies
+
+# Telegram Bot Token
+TOKEN = os.environ.get("BOT_TOKEN") or "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
+TELEGRAM_CHAT_ID = 776505127
 
 # Настройка логов
 logging.basicConfig(level=logging.INFO)
-app_web = Quart(__name__)
+logger = logging.getLogger(__name__)
 
-# ===== Получение данных с CoinGecko =====
-async def fetch_market_data(coin_id: str, days: int = 1, interval: str = "hourly"):
-    url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
-    params = {"vs_currency": VS_CURRENCY, "days": days, "interval": interval}
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(url, params=params, timeout=10.0)
-            response.raise_for_status()
-            data = response.json()
-            prices = [p[1] for p in data["prices"]]
-            return prices
-        except Exception as e:
-            logging.error(f"Ошибка при получении данных {coin_id}: {e}")
-            return None
+# Quart App (для веб-интерфейса)
+app = Quart(__name__)
+telegram_app = None  # Будет создан позже
 
-# ===== Стратегия комплексного анализа =====
-def analyze_strategy(prices: list) -> str:
-    if len(prices) < 20:
-        return "Недостаточно данных"
 
-    prices_np = np.array(prices)
+@app.route("/")
+async def index():
+    return jsonify({"status": "бот работает"})
 
-    rsi = compute_rsi(prices_np)
-    momentum = prices_np[-1] - prices_np[-10]
-    ma_fast = prices_np[-5:].mean()
-    ma_slow = prices_np[-20:].mean()
 
-    if rsi < 30 and momentum > 0 and ma_fast > ma_slow:
-        return "LONG"
-    elif rsi > 70 and momentum < 0 and ma_fast < ma_slow:
-        return "SHORT"
-    else:
-        return "NONE"
-
-# ===== Расчёт RSI =====
-def compute_rsi(prices: np.ndarray, period: int = 14) -> float:
-    delta = np.diff(prices)
-    gain = np.where(delta > 0, delta, 0)
-    loss = np.where(delta < 0, -delta, 0)
-    avg_gain = np.convolve(gain, np.ones(period), 'valid') / period
-    avg_loss = np.convolve(loss, np.ones(period), 'valid') / period
-    rs = avg_gain[-1] / avg_loss[-1] if avg_loss[-1] != 0 else 1
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
-
-# ===== Команда /start =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Бот запущен. Используй команду /check для анализа рынка.")
+    await update.message.reply_text("🤖 Бот запущен и готов к работе!")
 
-# ===== Команда /check =====
-async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("📌 Команды:\n/start — запуск\n/help — помощь\n/check — анализ рынка")
+
+
+async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Анализирую рынок...")
-    messages = []
-
-    for coin_id in PAIRS:
-        prices = await fetch_market_data(coin_id)
-        if prices:
-            signal = analyze_strategy(prices)
-            messages.append(f"{coin_id.upper()}: {signal}")
-        else:
-            messages.append(f"{coin_id.upper()}: ошибка загрузки данных")
-
-    result = "\n".join(messages)
+    result = await check_all_strategies()
     await update.message.reply_text(result)
 
-# ===== Запуск Telegram-бота =====
-async def main():
-    app = ApplicationBuilder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("check", check))
+async def run_bot():
+    global telegram_app
+    telegram_app = ApplicationBuilder().token(TOKEN).build()
 
-    # Telegram-пуллинг запускаем в отдельной задаче
-    loop = asyncio.get_event_loop()
-    loop.create_task(app.run_polling())
+    telegram_app.add_handler(CommandHandler("start", start))
+    telegram_app.add_handler(CommandHandler("help", help_command))
+    telegram_app.add_handler(CommandHandler("check", check_command))
 
-    # Quart-сервер
-    @app_web.route("/")
-    async def home():
-        return "Бот работает!"
+    await telegram_app.initialize()
+    await telegram_app.start()
+    await telegram_app.updater.start_polling()
 
-    import hypercorn.asyncio
-    config = hypercorn.Config()
-    config.bind = ["0.0.0.0:10000"]
-    await hypercorn.asyncio.serve(app_web, config)
 
-# Точка входа
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    loop.create_task(run_bot())
+    app.run(loop=loop, host="0.0.0.0", port=10000)
