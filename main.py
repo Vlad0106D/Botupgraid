@@ -2,78 +2,92 @@ import logging
 import asyncio
 from flask import Flask, request
 from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    ContextTypes,
-)
-
+from telegram.ext import Application, ApplicationBuilder, CommandHandler, ContextTypes
 import httpx
 
-# 🔐 Твой токен
-TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
+# === Настройки ===
+BOT_TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
 WEBHOOK_URL = "https://botupgraid.onrender.com/webhook"
+PORT = 10000
 
-# 📦 Flask + Telegram app
-app = Flask(__name__)
+# === Логирование ===
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 🤖 Создание Telegram-приложения
-application = ApplicationBuilder().token(TOKEN).build()
+# === Flask-приложение ===
+app = Flask(__name__)
+app_telegram = None  # будет инициализирован позже
 
-# ✅ Обработчик команды /start
+
+# === Команды бота ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Бот работает!")
+    await update.message.reply_text(
+        "Привет, я трейдинг-бот 📈\n"
+        "Я буду присылать сигналы и рыночные отчёты.\n"
+        "Напиши /help, чтобы увидеть список доступных команд."
+    )
 
-# 🚀 Регистрируем обработчики
-application.add_handler(CommandHandler("start", start))
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🛠 Доступные команды:\n"
+        "/start – Начать работу с ботом\n"
+        "/help – Справка по командам\n"
+        "/strategy – Управление торговыми стратегиями (вкл/выкл)\n"
+        "/testlong – Отправить тестовый сигнал Long\n"
+        "/testshort – Отправить тестовый сигнал Short"
+    )
 
 
-# 🌐 Flask: корневой маршрут
-@app.route("/", methods=["GET"])
-def index():
-    return "Бот запущен и готов к работе!"
-
-
-# 🔔 Flask: маршрут вебхука
-@app.route("/webhook", methods=["POST"])
+# === Flask endpoint для Telegram webhook ===
+@app.post("/webhook")
 async def webhook():
     try:
         data = request.get_json(force=True)
-        update = Update.de_json(data, application.bot)
-
-        if not application.running:
-            await application.initialize()
-            await application.start()
-
-        await application.process_update(update)
+        update = Update.de_json(data, app_telegram.bot)
+        await app_telegram.process_update(update)
     except Exception as e:
         logger.error(f"Ошибка при обработке update: {e}")
-    return "OK", 200
+    return "ok", 200
 
 
-# 🌍 Установка вебхука
+# === Установка webhook ===
 async def set_webhook():
     async with httpx.AsyncClient() as client:
-        r = await client.post(
-            f"https://api.telegram.org/bot{TOKEN}/setWebhook",
-            params={"url": WEBHOOK_URL}
-        )
-        logger.info(f"Webhook установлен: {r.status_code == 200}")
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
+        params = {"url": WEBHOOK_URL}
+        response = await client.post(url, params=params)
+        result = response.json()
+        logger.info(f"Webhook установлен: {result.get('ok')}")
 
 
-# 🧠 Запуск бота и Flask
+# === Запуск Telegram-бота и Flask ===
+async def main():
+    global app_telegram
+
+    app_telegram = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    # Добавляем обработчики команд
+    app_telegram.add_handler(CommandHandler("start", start))
+    app_telegram.add_handler(CommandHandler("help", help_command))
+
+    # Инициализация Telegram-бота
+    await app_telegram.initialize()
+    await set_webhook()
+    logger.info("Webhook установлен ✅")
+
+    # Запуск Flask через Hypercorn (если нужен локально)
+    from hypercorn.asyncio import serve
+    from hypercorn.config import Config
+
+    config = Config()
+    config.bind = [f"0.0.0.0:{PORT}"]
+    logger.info("Запуск Flask-сервера через Hypercorn...")
+    await serve(app, config)
+
+
+# === Точка входа ===
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(set_webhook())
-
-    import hypercorn.asyncio
-    import hypercorn.config
-
-    config = hypercorn.config.Config()
-    config.bind = ["0.0.0.0:10000"]
-
-    loop.run_until_complete(
-        hypercorn.asyncio.serve(app, config)
-    )
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Остановлено пользователем.")
