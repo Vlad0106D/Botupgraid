@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Создаем глобальное приложение telegram, но НЕ вызываем .build() здесь!
 application = ApplicationBuilder().token(TOKEN).build()
 
 enabled_strategies = set()
@@ -82,9 +81,6 @@ def setup_handlers():
     application.add_handler(CommandHandler("strategy", strategy_command))
 
 if __name__ == "__main__":
-    import uvloop, asyncio
-    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-
     setup_handlers()
 
     async def main():
