@@ -2,43 +2,76 @@ import logging
 import asyncio
 from flask import Flask, request
 from telegram import Update
-from telegram.ext import Application, ApplicationBuilder, CommandHandler, ContextTypes
-import httpx
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes
+)
 
-# === Настройки ===
 BOT_TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
 WEBHOOK_URL = "https://botupgraid.onrender.com/webhook"
-PORT = 10000
 
-# === Логирование ===
+# Включенные стратегии
+active_strategies = set()
+
+# Логгинг
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# === Flask-приложение ===
+# Flask-приложение
 app = Flask(__name__)
-app_telegram = None  # будет инициализирован позже
 
+# Telegram Application
+app_telegram = ApplicationBuilder().token(BOT_TOKEN).build()
 
-# === Команды бота ===
+# ===========================
+#        Обработчики
+# ===========================
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Привет, я трейдинг-бот 📈\n"
-        "Я буду присылать сигналы и рыночные отчёты.\n"
-        "Напиши /help, чтобы увидеть список доступных команд."
-    )
+    await update.message.reply_text("Привет! Я трейдинг-бот. Введи /help для списка команд.")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🛠 Доступные команды:\n"
-        "/start – Начать работу с ботом\n"
-        "/help – Справка по командам\n"
-        "/strategy – Управление торговыми стратегиями (вкл/выкл)\n"
-        "/testlong – Отправить тестовый сигнал Long\n"
-        "/testshort – Отправить тестовый сигнал Short"
+    text = (
+        "📊 *Команды трейдинг-бота:*\n\n"
+        "/start — запустить бота\n"
+        "/help — помощь\n"
+        "/strategy — список включённых стратегий\n"
+        "/strategy_on <название> — включить стратегию\n"
+        "/strategy_off <название> — отключить стратегию"
     )
+    await update.message.reply_text(text, parse_mode="Markdown")
 
+async def strategy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if active_strategies:
+        strategies = "\n".join(f"✅ {s}" for s in active_strategies)
+        await update.message.reply_text(f"🔧 Активные стратегии:\n{strategies}")
+    else:
+        await update.message.reply_text("Нет активных стратегий.")
 
-# === Flask endpoint для Telegram webhook ===
+async def strategy_on(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.args:
+        name = context.args[0]
+        active_strategies.add(name)
+        await update.message.reply_text(f"Стратегия '{name}' включена.")
+    else:
+        await update.message.reply_text("Укажи название стратегии: /strategy_on <название>")
+
+async def strategy_off(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.args:
+        name = context.args[0]
+        if name in active_strategies:
+            active_strategies.remove(name)
+            await update.message.reply_text(f"Стратегия '{name}' отключена.")
+        else:
+            await update.message.reply_text(f"Стратегия '{name}' не была включена.")
+    else:
+        await update.message.reply_text("Укажи название стратегии: /strategy_off <название>")
+
+# ===========================
+#       Flask Webhook
+# ===========================
+
 @app.post("/webhook")
 async def webhook():
     try:
@@ -47,47 +80,31 @@ async def webhook():
         await app_telegram.process_update(update)
     except Exception as e:
         logger.error(f"Ошибка при обработке update: {e}")
-    return "ok", 200
+    return "OK"
 
+# ===========================
+#         Запуск
+# ===========================
 
-# === Установка webhook ===
-async def set_webhook():
-    async with httpx.AsyncClient() as client:
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
-        params = {"url": WEBHOOK_URL}
-        response = await client.post(url, params=params)
-        result = response.json()
-        logger.info(f"Webhook установлен: {result.get('ok')}")
-
-
-# === Запуск Telegram-бота и Flask ===
 async def main():
-    global app_telegram
-
-    app_telegram = ApplicationBuilder().token(BOT_TOKEN).build()
-
-    # Добавляем обработчики команд
+    # Регистрируем команды
     app_telegram.add_handler(CommandHandler("start", start))
     app_telegram.add_handler(CommandHandler("help", help_command))
+    app_telegram.add_handler(CommandHandler("strategy", strategy))
+    app_telegram.add_handler(CommandHandler("strategy_on", strategy_on))
+    app_telegram.add_handler(CommandHandler("strategy_off", strategy_off))
 
-    # Инициализация Telegram-бота
-    await app_telegram.initialize()
-    await set_webhook()
-    logger.info("Webhook установлен ✅")
+    # Устанавливаем webhook
+    await app_telegram.bot.set_webhook(WEBHOOK_URL)
+    logger.info("Webhook установлен: True")
 
-    # Запуск Flask через Hypercorn (если нужен локально)
-    from hypercorn.asyncio import serve
+    # Запускаем Flask
+    import hypercorn.asyncio
     from hypercorn.config import Config
-
     config = Config()
-    config.bind = [f"0.0.0.0:{PORT}"]
-    logger.info("Запуск Flask-сервера через Hypercorn...")
-    await serve(app, config)
+    config.bind = ["0.0.0.0:10000"]
+    logger.info("Запуск Flask-сервера...")
+    await hypercorn.asyncio.serve(app, config)
 
-
-# === Точка входа ===
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("Остановлено пользователем.")
+    asyncio.run(main())
