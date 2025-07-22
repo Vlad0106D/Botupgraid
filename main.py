@@ -1,40 +1,40 @@
 from flask import Flask
-from telegram.ext import ApplicationBuilder, CommandHandler
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import asyncio
 
-# === Токен бота ===
+# --- Telegram TOKEN ---
 TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
 
-# === Flask ===
+# --- Flask app ---
 app = Flask(__name__)
 
 @app.route("/")
 def index():
-    return "Бот и веб-интерфейс работают ✅"
+    return "✅ Бот и Flask работают"
 
-# === Telegram-команда /start ===
-async def start(update, context):
-    await update.message.reply_text("Бот работает ✅")
+# --- Хендлер команды /start ---
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("👋 Бот работает!")
 
-# === Главная асинхронная функция ===
+# --- Асинхронный запуск Telegram-бота ---
 async def main():
-    # Telegram bot
     app_bot = ApplicationBuilder().token(TOKEN).build()
     app_bot.add_handler(CommandHandler("start", start))
+    await app_bot.initialize()
+    await app_bot.start()
+    await app_bot.updater.start_polling()
+    print("🤖 Бот запущен")
+    # НЕ await idle() — Render упадёт!
+    while True:
+        await asyncio.sleep(60)
 
-    # Запуск Telegram бота параллельно с Flask
-    runner = asyncio.create_task(app_bot.run_polling())
-
-    # Flask — через встроенный async-сервер
-    from hypercorn.asyncio import serve
-    from hypercorn.config import Config
-    config = Config()
-    config.bind = ["0.0.0.0:10000"]
-
-    flask_server = serve(app, config)
-
-    # Ожидание завершения обоих
-    await asyncio.gather(runner, flask_server)
-
+# --- Запуск Flask и бота ---
 if __name__ == "__main__":
+    import threading
+
+    # Flask в потоке
+    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
+
+    # Запуск асинхронного Telegram-бота
     asyncio.run(main())
