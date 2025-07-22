@@ -1,52 +1,71 @@
-import logging
 import asyncio
-
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from fastapi import FastAPI
-import uvicorn
+import httpx
+import numpy as np
 
 TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
 
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+COINS = {
+    "BTC": "bitcoin",
+    "ETH": "ethereum",
+    "SOL": "solana",
+    "XRP": "ripple",
+}
 
-# FastAPI app для Render (чтобы порт был занят)
-app_fastapi = FastAPI()
+# Получение исторических цен для расчёта RSI (14 периодов)
+async def fetch_prices(coin_id: str, days: int = 15):
+    url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
+    params = {"vs_currency": "usd", "days": days, "interval": "daily"}
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url, params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        prices = [p[1] for p in data["prices"]]
+        return prices
 
-@app_fastapi.get("/")
-async def root():
-    return {"status": "ok"}
+# Простая функция расчёта RSI
+def calculate_rsi(prices, period=14):
+    if len(prices) < period + 1:
+        return None  # недостаточно данных
+    deltas = np.diff(prices)
+    gains = np.where(deltas > 0, deltas, 0)
+    losses = np.where(deltas < 0, -deltas, 0)
+    avg_gain = np.mean(gains[:period])
+    avg_loss = np.mean(losses[:period])
+    if avg_loss == 0:
+        return 100.0
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    return round(rsi, 2)
 
-# Telegram ботовские хендлеры
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Бот запущен! Напиши /check для проверки.")
+async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Начинаю анализ по парам...")
 
-async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Команда /check сработала — бот живой!")
+    results = []
+    for symbol, coin_id in COINS.items():
+        try:
+            prices = await fetch_prices(coin_id)
+            rsi = calculate_rsi(prices)
+            current_price = prices[-1]
+            results.append(f"{symbol}/USDT\nЦена: ${current_price:.2f}\nRSI(14): {rsi if rsi is not None else 'Недостаточно данных'}\n")
+        except Exception as e:
+            results.append(f"❌ Ошибка при получении данных по {symbol}/USDT: {e}")
+
+    answer = "\n".join(results)
+    await update.message.reply_text(answer)
+
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Привет! Я бот для технического анализа. Используй команду /check для анализа.")
 
 async def main():
-    # Создаем Telegram Application
-    telegram_app = ApplicationBuilder().token(TOKEN).build()
+    app = ApplicationBuilder().token(TOKEN).build()
 
-    # Регистрируем команды
-    telegram_app.add_handler(CommandHandler("start", start))
-    telegram_app.add_handler(CommandHandler("check", check))
+    app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CommandHandler("check", check_command))
 
-    # Запускаем Telegram polling и веб-сервер FastAPI параллельно
-    # uvicorn.run блокирующий, поэтому запускаем его через asyncio.create_task и uvicorn.Server
-    config = uvicorn.Config(app_fastapi, host="0.0.0.0", port=8000, log_level="info")
-    server = uvicorn.Server(config)
-
-    telegram_task = asyncio.create_task(telegram_app.run_polling())
-    uvicorn_task = asyncio.create_task(server.serve())
-
-    print("✅ Бот запущен и веб-сервер на порту 8000 работает")
-
-    # Ждем оба таска (бот и веб-сервер)
-    await asyncio.gather(telegram_task, uvicorn_task)
+    print("✅ Бот запущен")
+    await app.run_polling()
 
 if __name__ == "__main__":
     asyncio.run(main())
