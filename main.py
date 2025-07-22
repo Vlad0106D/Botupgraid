@@ -13,14 +13,14 @@ WEBHOOK_URL = f"https://botupgraid.onrender.com{WEBHOOK_PATH}"
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# === Flask приложение ===
+# === Flask ===
 flask_app = Flask(__name__)
 
-# === Новый event loop для телеграма ===
+# === Новый event loop ===
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
-# === Создание Telegram Application ===
+# === Telegram Application ===
 app_telegram = Application.builder().token(TOKEN).build()
 
 # === Обработка команды /start ===
@@ -33,16 +33,20 @@ app_telegram.add_handler(CommandHandler("start", start))
 @flask_app.route(WEBHOOK_PATH, methods=["POST"])
 def webhook():
     data = request.get_json(force=True)
+    logger.info(f"Получен update: {data}")
     update = Update.de_json(data, app_telegram.bot)
-    asyncio.run_coroutine_threadsafe(app_telegram.process_update(update), loop)
+    try:
+        asyncio.run_coroutine_threadsafe(app_telegram.process_update(update), loop).result(timeout=10)
+    except Exception as e:
+        logger.exception("Ошибка при обработке update:")
     return "OK", 200
 
-# === Установка webhook и запуск Flask ===
+# === Запуск и установка Webhook ===
 async def main():
     await app_telegram.initialize()
     await app_telegram.bot.set_webhook(WEBHOOK_URL)
     logger.info("Webhook установлен")
-    await app_telegram.start()
+    await app_telegram.start()  # Это важно!
 
 if __name__ == "__main__":
     loop.run_until_complete(main())
