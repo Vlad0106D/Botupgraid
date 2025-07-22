@@ -11,10 +11,10 @@ from telegram.ext import (
 BOT_TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
 WEBHOOK_URL = "https://botupgraid.onrender.com/webhook"
 
-# Включенные стратегии
+# Включённые стратегии
 active_strategies = set()
 
-# Логгинг
+# Логгирование
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ app = Flask(__name__)
 app_telegram = ApplicationBuilder().token(BOT_TOKEN).build()
 
 # ===========================
-#        Обработчики
+#       Обработчики
 # ===========================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -83,22 +83,24 @@ async def webhook():
     return "OK"
 
 # ===========================
-#         Запуск
+#        Запуск бота
 # ===========================
 
 async def main():
-    # Регистрируем команды
+    # Добавляем обработчики
     app_telegram.add_handler(CommandHandler("start", start))
     app_telegram.add_handler(CommandHandler("help", help_command))
     app_telegram.add_handler(CommandHandler("strategy", strategy))
     app_telegram.add_handler(CommandHandler("strategy_on", strategy_on))
     app_telegram.add_handler(CommandHandler("strategy_off", strategy_off))
 
-    # Устанавливаем webhook
+    # Инициализация и запуск приложения
+    await app_telegram.initialize()
+    await app_telegram.start()
     await app_telegram.bot.set_webhook(WEBHOOK_URL)
-    logger.info("Webhook установлен: True")
+    logger.info("Webhook установлен")
 
-    # Запускаем Flask
+    # Запускаем Flask через hypercorn
     import hypercorn.asyncio
     from hypercorn.config import Config
     config = Config()
