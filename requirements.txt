@@ -1,3 +1,6 @@
 python-telegram-bot==20.3
-httpx
+httpx==0.24.1
+quart==0.20.0
+hypercorn==0.17.3
 numpy
+ta
