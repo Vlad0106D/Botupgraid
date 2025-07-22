@@ -1,116 +1,114 @@
-import os
 import logging
-from quart import Quart, request
 from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder, CommandHandler, ContextTypes
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+import asyncio
+import random
 
 TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
-WEBHOOK_URL = "https://botupgraid.onrender.com/webhook"
 
-# Логирование
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
 
-# Quart app
-app = Quart(__name__)
-telegram_app = None
+# Список активных стратегий
+ACTIVE_STRATEGIES = ["Комплексный технический анализ"]
 
-# 🔧 Список стратегий
-default_strategies = [
-    "Комплексный технический анализ",
-    "Приток/отток капитала",
-    "RSI + MA",
-    "Momentum + Bollinger",
-    "Открытый интерес + объем"
-]
-active_strategies = default_strategies.copy()
+# Список торгуемых пар
+TRADING_PAIRS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT"]
 
-@app.before_serving
-async def before_serving():
-    global telegram_app
-    telegram_app = ApplicationBuilder().token(TOKEN).build()
-
-    telegram_app.add_handler(CommandHandler("start", start))
-    telegram_app.add_handler(CommandHandler("help", help_command))
-    telegram_app.add_handler(CommandHandler("strategy", strategy))
-    telegram_app.add_handler(CommandHandler("addstrategy", add_strategy))
-    telegram_app.add_handler(CommandHandler("removestrategy", remove_strategy))
-
-    await telegram_app.initialize()
-    await telegram_app.bot.set_webhook(WEBHOOK_URL)
-    logging.info("Webhook установлен.")
-    await telegram_app.start()
-
-
-@app.route("/", methods=["GET"])
-async def home():
-    return "Bot is running!"
-
-
-@app.route("/webhook", methods=["POST"])
-async def webhook():
-    data = await request.get_json(force=True)
-    update = Update.de_json(data, telegram_app.bot)
-    await telegram_app.process_update(update)
-    return "OK"
-
-
-@app.after_serving
-async def after_serving():
-    await telegram_app.stop()
-    await telegram_app.shutdown()
-
-
-# Команды
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Бот запущен. Используй /help для списка команд.")
-
+    await update.message.reply_text("👋 Бот запущен и готов к работе. Введите /help для списка команд.")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Доступные команды:\n"
-        "/start — запуск\n"
+        "/start — запуск бота\n"
+        "/help — справка\n"
         "/strategy — список активных стратегий\n"
-        "/addstrategy Название — добавить стратегию\n"
-        "/removestrategy Название — удалить стратегию"
+        "/check — выполнить технический анализ и найти сигналы"
     )
 
-
 async def strategy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not active_strategies:
-        await update.message.reply_text("Нет активных стратегий.")
+    if ACTIVE_STRATEGIES:
+        msg = "📈 Активные стратегии:\n" + "\n".join(f"- {s}" for s in ACTIVE_STRATEGIES)
     else:
-        strategies_text = "\n".join(f"• {s}" for s in active_strategies)
-        await update.message.reply_text(f"Активные стратегии:\n{strategies_text}")
+        msg = "❌ Нет активных стратегий."
+    await update.message.reply_text(msg)
 
+# Заглушки для индикаторов (будут заменены на реальные данные)
+def mock_rsi():
+    value = random.randint(10, 90)
+    if value > 70:
+        return "RSI: Перекупленность (SHORT)", "short"
+    elif value < 30:
+        return "RSI: Перепроданность (LONG)", "long"
+    return "RSI: Нейтрально", "none"
 
-async def add_strategy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Укажи название стратегии. Пример: /addstrategy RSI + MA")
-        return
+def mock_ma():
+    direction = random.choice(["long", "short", "none"])
+    return f"MA: Направление {direction.upper()}", direction
 
-    name = " ".join(context.args)
-    if name in active_strategies:
-        await update.message.reply_text(f"Стратегия '{name}' уже активна.")
-    else:
-        active_strategies.append(name)
-        await update.message.reply_text(f"Добавлена стратегия: {name}")
+def mock_momentum():
+    direction = random.choice(["long", "short", "none"])
+    return f"Momentum: {direction.upper()}", direction
 
+def mock_bollinger():
+    direction = random.choice(["long", "short", "none"])
+    return f"Bollinger: {direction.upper()}", direction
 
-async def remove_strategy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Укажи название стратегии. Пример: /removestrategy RSI + MA")
-        return
+def mock_oi():
+    direction = random.choice(["long", "short", "none"])
+    return f"OI: {direction.upper()}", direction
 
-    name = " ".join(context.args)
-    if name in active_strategies:
-        active_strategies.remove(name)
-        await update.message.reply_text(f"Удалена стратегия: {name}")
-    else:
-        await update.message.reply_text(f"Стратегия '{name}' не найдена.")
+def aggregate_signals(signals):
+    long_count = signals.count("long")
+    short_count = signals.count("short")
+    if long_count > short_count and long_count >= 3:
+        return "LONG"
+    elif short_count > long_count and short_count >= 3:
+        return "SHORT"
+    return "NONE"
 
+async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = "📊 Комплексный технический анализ:\n"
+    for pair in TRADING_PAIRS:
+        indicators = []
+        directions = []
+
+        rsi_text, rsi_dir = mock_rsi()
+        indicators.append(rsi_text)
+        directions.append(rsi_dir)
+
+        ma_text, ma_dir = mock_ma()
+        indicators.append(ma_text)
+        directions.append(ma_dir)
+
+        mom_text, mom_dir = mock_momentum()
+        indicators.append(mom_text)
+        directions.append(mom_dir)
+
+        boll_text, boll_dir = mock_bollinger()
+        indicators.append(boll_text)
+        directions.append(boll_dir)
+
+        oi_text, oi_dir = mock_oi()
+        indicators.append(oi_text)
+        directions.append(oi_dir)
+
+        signal = aggregate_signals(directions)
+        msg += f"\n▶️ Пара: {pair}\n" + "\n".join(indicators) + f"\n📍 Итоговый сигнал: *{signal}*\n"
+    await update.message.reply_markdown(msg)
+
+async def main():
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("strategy", strategy))
+    app.add_handler(CommandHandler("check", check))
+
+    print("Бот запущен...")
+    await app.run_polling()
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    asyncio.run(main())
