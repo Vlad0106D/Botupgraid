@@ -1,34 +1,32 @@
 import logging
 import asyncio
-from flask import Flask, request, abort
+import threading
+from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
+TOKEN = "YOUR_TOKEN"
 WEBHOOK_PATH = "/webhook"
-WEBHOOK_URL = "https://botupgraid.onrender.com" + WEBHOOK_PATH
+WEBHOOK_URL = "https://yourdomain.com" + WEBHOOK_PATH
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 flask_app = Flask(__name__)
-loop = asyncio.get_event_loop()
+loop = asyncio.new_event_loop()
 
 app_telegram = Application.builder().token(TOKEN).build()
 
-# Пример простой команды /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🤖 Бот работает через Webhook!")
 
 app_telegram.add_handler(CommandHandler("start", start))
-
 
 @flask_app.route(WEBHOOK_PATH, methods=["POST"])
 def webhook():
     data = request.get_json(force=True)
     logger.info(f"Получен update: {data}")
     update = Update.de_json(data, app_telegram.bot)
-    # Используем уже запущенный цикл и run_coroutine_threadsafe
     future = asyncio.run_coroutine_threadsafe(app_telegram.process_update(update), loop)
     try:
         future.result(timeout=10)
@@ -36,16 +34,19 @@ def webhook():
         logger.error(f"Ошибка при обработке update: {e}")
     return "OK", 200
 
-
 async def set_webhook():
     await app_telegram.bot.set_webhook(WEBHOOK_URL)
-    logger.info("Webhook установлен: True")
+    logger.info("Webhook установлен")
 
+def run_flask():
+    flask_app.run(host="0.0.0.0", port=10000)
 
 if __name__ == "__main__":
-    # Инициализация и установка webhook
+    asyncio.set_event_loop(loop)
     loop.run_until_complete(app_telegram.initialize())
     loop.run_until_complete(set_webhook())
 
-    # Запускаем Flask сервер (в бою лучше через gunicorn или другой WSGI сервер)
-    flask_app.run(host="0.0.0.0", port=10000)
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.start()
+
+    loop.run_forever()
