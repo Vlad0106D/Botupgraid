@@ -1,6 +1,6 @@
 import logging
 import asyncio
-from flask import Flask, request, abort
+from quart import Quart, request, abort
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
 
@@ -8,18 +8,20 @@ TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
+    level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+app = Quart(__name__)
 
 application = ApplicationBuilder().token(TOKEN).build()
 
 enabled_strategies = set()
 
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привет! Я твой трейдинг-бот. Используй /help для списка команд.")
+
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
@@ -31,6 +33,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/strategy disable <название> - Отключить стратегию\n"
     )
     await update.message.reply_text(text)
+
 
 async def strategy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
@@ -62,44 +65,41 @@ async def strategy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(f"Стратегия '{strategy_name}' не была активна.")
 
+
+@app.route("/webhook", methods=["POST"])
+async def webhook():
+    if request.method == "POST":
+        update_data = await request.get_json(force=True)
+        update = Update.de_json(update_data, application.bot)
+        try:
+            await application.process_update(update)
+        except Exception as e:
+            logger.error(f"Ошибка при обработке update: {e}")
+        return "ok"
+    else:
+        abort(405)
+
+
 def setup_handlers():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("strategy", strategy_command))
 
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    if request.method == "POST":
-        update_data = request.get_json(force=True)
-        update = Update.de_json(update_data, application.bot)
-        # Запускаем асинхронную обработку в фоне
-        asyncio.create_task(process_update_async(update))
-        return "ok"
-    else:
-        abort(405)
-
-async def process_update_async(update: Update):
-    try:
-        await application.process_update(update)
-    except Exception as e:
-        logger.error(f"Ошибка при обработке update: {e}")
 
 if __name__ == "__main__":
     setup_handlers()
 
-    import os
-    webhook_url = os.getenv("WEBHOOK_URL", "https://botupgraid.onrender.com/webhook")
-
     async def main():
-        # Устанавливаем вебхук
+        webhook_url = "https://botupgraid.onrender.com/webhook"  # твой URL
         await application.bot.set_webhook(webhook_url)
-        logger.info(f"Webhook установлен: {webhook_url}")
+        logger.info("Webhook установлен")
 
         from hypercorn.asyncio import serve
         from hypercorn.config import Config
+
         config = Config()
         config.bind = ["0.0.0.0:10000"]
-        logger.info("Запуск Flask-сервера...")
+        logger.info("Запуск сервера Quart...")
         await serve(app, config)
 
     asyncio.run(main())
