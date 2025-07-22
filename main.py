@@ -1,39 +1,64 @@
-from flask import Flask, request, jsonify
-import asyncio
+from flask import Flask, request
 from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
-from hypercorn.asyncio import serve
-from hypercorn.config import Config
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, Dispatcher
+import logging
+import asyncio
+import httpx
+
+TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
+WEBHOOK_URL = "https://botupgraid.onrender.com/webhook"
 
 app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-BOT_TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
+# Создаём приложение telegram-бота
+application = ApplicationBuilder().token(TOKEN).build()
 
-application = ApplicationBuilder().token(BOT_TOKEN).build()
-
-# Обработчик команды /start
+# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Бот запущен и готов к работе.")
+    await update.message.reply_text("Привет! Я бот, работаю через webhook и Flask.")
 
 application.add_handler(CommandHandler("start", start))
 
-# Async webhook endpoint
+
+# Главная страница (чтобы не было 404)
+@app.route("/")
+async def index():
+    return "Бот работает — главная страница"
+
+
+# Вебхук для телеги
 @app.route("/webhook", methods=["POST"])
 async def webhook():
-    data = await request.get_json()
-    update = Update.de_json(data, application.bot)
-    await application.update_queue.put(update)
-    return jsonify({"ok": True})
+    try:
+        update = Update.de_json(await request.get_json(), application.bot)
+        await application.process_update(update)
+    except Exception as e:
+        logger.error(f"Ошибка при обработке update: {e}")
+    return "ok"
 
-async def main():
-    await application.initialize()
-    await application.start()
-    # Здесь можно убрать polling, если используешь webhook
-    # await application.updater.start_polling()
+
+async def set_webhook():
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"https://api.telegram.org/bot{TOKEN}/setWebhook",
+            params={"url": WEBHOOK_URL}
+        )
+        if response.status_code == 200:
+            logger.info(f"Webhook установлен: {response.json().get('ok')}")
+        else:
+            logger.error(f"Ошибка установки webhook: {response.text}")
+
+
+if __name__ == "__main__":
+    # Устанавливаем webhook при старте
+    asyncio.run(set_webhook())
+    # Запускаем Flask с async поддержкой через hypercorn
+    import hypercorn.asyncio
+    from hypercorn.config import Config
 
     config = Config()
     config.bind = ["0.0.0.0:10000"]
-    await serve(app, config)
 
-if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(hypercorn.asyncio.serve(app, config))
