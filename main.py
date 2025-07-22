@@ -1,9 +1,11 @@
 import logging
+import nest_asyncio
 import asyncio
 from flask import Flask, request, abort
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
 
+# Твой токен
 TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
 
 logging.basicConfig(
@@ -12,12 +14,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+nest_asyncio.apply()  # предотвращаем ошибку 'event loop is closed'
+
 app = Flask(__name__)
 
 application = ApplicationBuilder().token(TOKEN).build()
 
 enabled_strategies = set()
 
+# Хендлеры команд
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привет! Я твой трейдинг-бот. Используй /help для списка команд.")
 
@@ -62,6 +67,7 @@ async def strategy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(f"Стратегия '{strategy_name}' не была активна.")
 
+# Обработка webhook POST от Telegram
 @app.route("/webhook", methods=["POST"])
 async def webhook():
     if request.method == "POST":
@@ -75,6 +81,7 @@ async def webhook():
     else:
         abort(405)
 
+# Регистрируем хендлеры
 def setup_handlers():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
@@ -84,8 +91,7 @@ if __name__ == "__main__":
     setup_handlers()
 
     async def main():
-        await application.initialize()  # <-- ВАЖНО: Инициализируем Application перед использованием
-        webhook_url = "https://botupgraid.onrender.com/webhook"
+        webhook_url = "https://botupgraid.onrender.com/webhook"  # твой реальный URL
         await application.bot.set_webhook(webhook_url)
         logger.info("Webhook установлен: True")
 
@@ -96,4 +102,6 @@ if __name__ == "__main__":
         logger.info("Запуск Flask-сервера...")
         await serve(app, config)
 
-    asyncio.run(main())
+    # Создаём и запускаем event loop вручную
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
