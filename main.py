@@ -1,6 +1,5 @@
 import logging
 import asyncio
-import threading
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
@@ -13,14 +12,19 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 flask_app = Flask(__name__)
-loop = asyncio.new_event_loop()
+loop = asyncio.get_event_loop()
 
 app_telegram = Application.builder().token(TOKEN).build()
 
+# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🤖 Бот работает через Webhook!")
 
 app_telegram.add_handler(CommandHandler("start", start))
+
+@flask_app.route("/")
+def index():
+    return "🤖 Бот работает через Webhook!"
 
 @flask_app.route(WEBHOOK_PATH, methods=["POST"])
 def webhook():
@@ -38,15 +42,7 @@ async def set_webhook():
     await app_telegram.bot.set_webhook(WEBHOOK_URL)
     logger.info("Webhook установлен")
 
-def run_flask():
-    flask_app.run(host="0.0.0.0", port=10000)
-
 if __name__ == "__main__":
-    asyncio.set_event_loop(loop)
     loop.run_until_complete(app_telegram.initialize())
     loop.run_until_complete(set_webhook())
-
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.start()
-
-    loop.run_forever()
+    flask_app.run(host="0.0.0.0", port=10000)
