@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Trading Bot Interface</title>
+</head>
+<body>
+    <h1>🔧 Telegram Трейдинг Бот</h1>
+    <p>Бот работает! Используй команды в Telegram:</p>
+    <ul>
+        <li><b>/start</b> – Запуск</li>
+        <li><b>/signal</b> – Получить тестовый сигнал</li>
+    </ul>
+</body>
+</html>
