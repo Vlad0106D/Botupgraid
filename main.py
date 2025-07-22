@@ -3,35 +3,41 @@ from telegram.ext import ApplicationBuilder, CommandHandler
 import threading
 import asyncio
 
-# --- Telegram Bot Setup ---
+# --- Токен Telegram ---
 TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
 
+# --- Flask ---
 app = Flask(__name__)
 
-# Команда /start
-async def start(update, context):
-    await update.message.reply_text("Бот работает ✅")
-
-# Функция запуска Telegram-бота
-async def start_bot():
-    application = ApplicationBuilder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    await application.run_polling()
-
-# Функция запуска Flask в отдельном потоке
-def run_flask():
-    print("🌐 Flask запускается...")
-    app.run(host="0.0.0.0", port=10000)
-
-# Корневая страница
 @app.route("/")
 def index():
     return "Бот и веб-интерфейс работают ✅"
 
-# --- Главный блок запуска ---
+# --- Хендлер команды /start ---
+async def start(update, context):
+    await update.message.reply_text("Бот работает ✅")
+
+# --- Telegram бот ---
+async def setup_bot():
+    app_bot = ApplicationBuilder().token(TOKEN).build()
+    app_bot.add_handler(CommandHandler("start", start))
+    await app_bot.initialize()
+    await app_bot.start()
+    await app_bot.updater.start_polling()
+    await app_bot.updater.idle()
+
+def run_bot():
+    asyncio.run(setup_bot())
+
+# --- Flask запуск ---
+def run_flask():
+    print("🌐 Flask запускается...")
+    app.run(host="0.0.0.0", port=10000)
+
+# --- Главный блок ---
 if __name__ == "__main__":
-    # Запускаем Flask в фоне
+    # Flask в потоке
     threading.Thread(target=run_flask).start()
 
-    # Запускаем Telegram-бот в основном потоке
-    asyncio.run(start_bot())
+    # Бот в основном потоке
+    run_bot()
