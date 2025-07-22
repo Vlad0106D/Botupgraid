@@ -4,10 +4,8 @@ from telegram import Update
 import threading
 import asyncio
 
-# Импорт стратегии
 from strategies import generate_signals
 
-# 🔐 ТВОЙ ТОКЕН
 TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
 
 app = Flask(__name__)
@@ -16,11 +14,9 @@ app = Flask(__name__)
 def index():
     return "Бот и веб-интерфейс работают ✅"
 
-# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Бот запущен ✅")
 
-# Команда /signal
 async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     signals, explanation, timestamp = generate_signals()
     msg = f"📊 Сигналы на {timestamp}:\n\n"
@@ -33,10 +29,7 @@ async def run_bot():
     app_bot = ApplicationBuilder().token(TOKEN).build()
     app_bot.add_handler(CommandHandler("start", start))
     app_bot.add_handler(CommandHandler("signal", signal))
-    await app_bot.initialize()
-    await app_bot.start()
-    await app_bot.updater.start_polling()
-    await app_bot.updater.idle()
+    await app_bot.run_polling()
 
 def run_flask():
     app.run(host="0.0.0.0", port=10000)
