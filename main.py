@@ -1,97 +1,105 @@
-import logging
-import httpx
 import asyncio
 from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    ContextTypes,
-)
-import nest_asyncio
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+import httpx
+import numpy as np
+from datetime import datetime, timedelta
 
 TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
+PAIRS = {
+    "BTCUSDT": "bitcoin",
+    "ETHUSDT": "ethereum",
+    "SOLUSDT": "solana",
+    "XRPUSDT": "ripple"
+}
 
-logging.basicConfig(level=logging.INFO)
-nest_asyncio.apply()  # для Render
+async def fetch_ohlcv(coin_id: str, days: int = 2) -> list:
+    """Получить OHLCV данные с CoinGecko"""
+    url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart?vs_currency=usd&days={days}&interval=hourly"
+    async with httpx.AsyncClient(timeout=15) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+        data = response.json()
+        prices = data["prices"][-100:]  # последние 100 часовых свечей
+        return prices
 
-symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"]
+def calculate_rsi(prices: list, period: int = 14) -> float:
+    prices = np.array(prices)
+    deltas = np.diff(prices)
+    seed = deltas[:period]
+    up = seed[seed > 0].sum() / period
+    down = -seed[seed < 0].sum() / period
+    rs = up / down if down != 0 else 0
+    rsi = 100 - (100 / (1 + rs))
+    return round(rsi, 2)
 
-# Получение исторических данных с Binance
-async def fetch_klines(symbol: str, interval: str = "1h", limit: int = 100):
-    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(url)
-            response.raise_for_status()
-            data = response.json()
-            return [float(candle[4]) for candle in data]  # закрытия
-        except Exception as e:
-            logging.error(f"Ошибка при получении данных {symbol}: {e}")
-            return None
+def calculate_ma(prices: list, period: int) -> float:
+    return round(np.mean(prices[-period:]), 2)
 
-# Расчёт RSI
-def calculate_rsi(prices, period: int = 14):
-    if len(prices) < period + 1:
-        return None
-    deltas = [prices[i + 1] - prices[i] for i in range(len(prices) - 1)]
-    gains = [d for d in deltas if d > 0]
-    losses = [-d for d in deltas if d < 0]
-    avg_gain = sum(gains[-period:]) / period if gains else 0
-    avg_loss = sum(losses[-period:]) / period if losses else 0
-    if avg_loss == 0:
-        return 100
-    rs = avg_gain / avg_loss
-    return 100 - (100 / (1 + rs))
+def analyze(prices: list) -> dict:
+    close_prices = [p[1] for p in prices]  # цены закрытия
+    rsi = calculate_rsi(close_prices)
+    ma50 = calculate_ma(close_prices, 50)
+    ma200 = calculate_ma(close_prices, 100)  # используем 100 точек, эквивалент ~4 дня
+    last_price = close_prices[-1]
 
-# Команда /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Бот запущен. Используй /check для анализа рынка.")
+    signal = "none"
+    reasons = []
 
-# Команда /help
-async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("/start – запустить бота\n/check – получить сигналы\n/strategy – активные стратегии")
+    if rsi < 30:
+        signal = "long"
+        reasons.append("RSI ниже 30 (перепроданность)")
+    elif rsi > 70:
+        signal = "short"
+        reasons.append("RSI выше 70 (перекупленность)")
 
-# Команда /strategy
-async def strategy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Активная стратегия: Комплексный технический анализ (RSI)")
+    if last_price > ma50 > ma200:
+        signal = "long"
+        reasons.append("Цена выше MA50 и MA200")
+    elif last_price < ma50 < ma200:
+        signal = "short"
+        reasons.append("Цена ниже MA50 и MA200")
 
-# Команда /check — основной анализ
+    return {
+        "price": round(last_price, 2),
+        "rsi": rsi,
+        "ma50": ma50,
+        "ma200": ma200,
+        "signal": signal,
+        "reasons": reasons
+    }
+
 async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Анализирую рынок...")
+
     results = []
-    for symbol in symbols:
-        prices = await fetch_klines(symbol)
-        if prices is None:
-            results.append(f"{symbol}: ошибка получения данных.")
-            continue
-        rsi = calculate_rsi(prices)
-        if rsi is None:
-            results.append(f"{symbol}: недостаточно данных для RSI.")
-            continue
+    for pair, coin_id in PAIRS.items():
+        try:
+            prices = await fetch_ohlcv(coin_id)
+            analysis = analyze(prices)
+            signal = analysis["signal"].upper()
+            reasons = "\n- " + "\n- ".join(analysis["reasons"]) if analysis["reasons"] else "Нет явных сигналов"
+            result = f"🔹 {pair}\n" \
+                     f"Текущая цена: {analysis['price']}$\n" \
+                     f"RSI: {analysis['rsi']}\n" \
+                     f"MA50: {analysis['ma50']}\n" \
+                     f"MA200: {analysis['ma200']}\n" \
+                     f"📊 Сигнал: *{signal}*\nПричины:{reasons}"
+            results.append(result)
+        except Exception as e:
+            results.append(f"❌ Ошибка при анализе {pair}: {e}")
 
-        if rsi < 30:
-            signal = "🔵 LONG (перепродан)"
-        elif rsi > 70:
-            signal = "🔴 SHORT (перекуплен)"
-        else:
-            signal = "⚪️ Нейтрально"
+    await update.message.reply_text("\n\n".join(results), parse_mode="Markdown")
 
-        results.append(f"{symbol}: RSI = {rsi:.2f} → {signal}")
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Привет! Я трейдинг-бот. Используй команду /check для анализа рынка.")
 
-    await update.message.reply_text("\n".join(results))
-
-# Запуск приложения
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_cmd))
-    app.add_handler(CommandHandler("strategy", strategy))
     app.add_handler(CommandHandler("check", check))
-    await app.initialize()
-    await app.start()
     print("Бот запущен...")
-    await app.updater.start_polling()
-    await app.updater.idle()
+    await app.run_polling()
 
 if __name__ == "__main__":
-    asyncio.get_event_loop().run_until_complete(main())
+    asyncio.run(main())
