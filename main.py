@@ -13,27 +13,24 @@ from telegram.ext import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# === Токен Telegram бота ===
+# === Конфигурация ===
 TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
 WEBHOOK_URL = "https://botupgraid.onrender.com/webhook"
 
 # === Flask-приложение ===
 app = Flask(__name__)
-app_telegram = None  # будет инициализировано позже
+app_telegram = None
 
-# === Команда /start ===
+# === Команды ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("👋 Добро пожаловать! Используйте /strategy чтобы просмотреть доступные стратегии.")
 
-# === Команда /help ===
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("📚 Команды:\n/start — приветствие\n/strategy — список стратегий\n/check — ручной анализ рынка")
 
-# === Команда /strategy ===
 async def strategy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("📊 Активные стратегии:\n1. Комплексный технический анализ (вручную запустить: /check)")
 
-# === Команда /check — ручной запуск стратегии ===
 async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     signals = {
         "BTC/USDT": "🔼 Long — RSI в зоне перепроданности, подтверждено пересечением MA.",
@@ -48,16 +45,7 @@ async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(message)
 
-# === Установка webhook ===
-async def set_webhook():
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"https://api.telegram.org/bot{TOKEN}/setWebhook",
-            params={"url": WEBHOOK_URL}
-        )
-        logger.info("Webhook установлен: %s", response.json()["ok"])
-
-# === Обработка webhook POST от Telegram ===
+# === Webhook ===
 @app.post("/webhook")
 async def webhook():
     try:
@@ -68,22 +56,33 @@ async def webhook():
         logger.error("Ошибка при обработке update: %s", e)
     return {"ok": True}
 
-# === Запуск Telegram Application и Flask ===
+# === Основной запуск ===
 async def main():
     global app_telegram
     app_telegram = ApplicationBuilder().token(TOKEN).build()
 
-    # Регистрируем команды
+    # Добавляем хендлеры
     app_telegram.add_handler(CommandHandler("start", start))
     app_telegram.add_handler(CommandHandler("help", help_command))
     app_telegram.add_handler(CommandHandler("strategy", strategy))
     app_telegram.add_handler(CommandHandler("check", check))
 
-    await set_webhook()
-    logger.info("Webhook установлен и приложение Telegram готово.")
+    # Обязательно инициализируем перед использованием process_update
+    await app_telegram.initialize()
+
+    # Устанавливаем webhook
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"https://api.telegram.org/bot{TOKEN}/setWebhook",
+            params={"url": WEBHOOK_URL}
+        )
+        logger.info("Webhook установлен: %s", response.json()["ok"])
+
+    logger.info("Telegram Application готово.")
 
 if __name__ == "__main__":
     asyncio.run(main())
+
     import hypercorn.asyncio
     from hypercorn.config import Config
 
