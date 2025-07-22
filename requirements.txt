@@ -1,4 +1,4 @@
-flask[async]
-python-telegram-bot>=20.0
-httpx
+nest_asyncio
+flask
+python-telegram-bot==20.3
 hypercorn
