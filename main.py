@@ -1,55 +1,39 @@
+from flask import Flask, request, jsonify
 import asyncio
-import logging
-from flask import Flask, request
 from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder, CommandHandler, ContextTypes
-)
-import httpx
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
+from hypercorn.asyncio import serve
+from hypercorn.config import Config
 
-# Telegram Bot Token
-TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
-WEBHOOK_URL = "https://botupgraid.onrender.com/webhook"
+app = Flask(__name__)
 
-# Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+BOT_TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
 
-# Flask app
-app_flask = Flask(__name__)
-
-# Telegram Application
-app_telegram = ApplicationBuilder().token(TOKEN).build()
+application = ApplicationBuilder().token(BOT_TOKEN).build()
 
 # Обработчик команды /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🤖 Бот работает через Webhook!")
+    await update.message.reply_text("Привет! Бот запущен и готов к работе.")
 
-# Регистрируем обработчик
-app_telegram.add_handler(CommandHandler("start", start))
+application.add_handler(CommandHandler("start", start))
 
-# Устанавливаем webhook
-async def set_webhook():
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"https://api.telegram.org/bot{TOKEN}/setWebhook",
-            params={"url": WEBHOOK_URL}
-        )
-        logger.info("Webhook установлен: %s", response.json().get("ok", False))
-
-# Запускаем вебхук
-@app_flask.route("/webhook", methods=["POST"])
+# Async webhook endpoint
+@app.route("/webhook", methods=["POST"])
 async def webhook():
-    try:
-        data = request.get_json(force=True)
-        update = Update.de_json(data, app_telegram.bot)
-        await app_telegram.process_update(update)
-    except Exception as e:
-        logger.exception("Ошибка при обработке update:")
-    return "OK"
+    data = await request.get_json()
+    update = Update.de_json(data, application.bot)
+    await application.update_queue.put(update)
+    return jsonify({"ok": True})
 
-# Запуск сервера и webhook
+async def main():
+    await application.initialize()
+    await application.start()
+    # Здесь можно убрать polling, если используешь webhook
+    # await application.updater.start_polling()
+
+    config = Config()
+    config.bind = ["0.0.0.0:10000"]
+    await serve(app, config)
+
 if __name__ == "__main__":
-    asyncio.run(set_webhook())
-    logger.info("Запуск Flask-сервера...")
-    app_flask.run(host="0.0.0.0", port=10000)
+    asyncio.run(main())
