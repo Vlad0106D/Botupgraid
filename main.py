@@ -5,9 +5,9 @@ from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-TOKEN = "YOUR_TOKEN"
+TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
 WEBHOOK_PATH = "/webhook"
-WEBHOOK_URL = "https://yourdomain.com" + WEBHOOK_PATH
+WEBHOOK_URL = "https://botupgraid.onrender.com" + WEBHOOK_PATH
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
