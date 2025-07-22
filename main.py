@@ -1,11 +1,9 @@
 import logging
-import nest_asyncio
 import asyncio
 from flask import Flask, request, abort
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
 
-# Твой токен
 TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
 
 logging.basicConfig(
@@ -14,15 +12,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-nest_asyncio.apply()  # предотвращаем ошибку 'event loop is closed'
-
 app = Flask(__name__)
 
 application = ApplicationBuilder().token(TOKEN).build()
 
 enabled_strategies = set()
 
-# Хендлеры команд
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привет! Я твой трейдинг-бот. Используй /help для списка команд.")
 
@@ -67,33 +62,38 @@ async def strategy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(f"Стратегия '{strategy_name}' не была активна.")
 
-# Обработка webhook POST от Telegram
-@app.route("/webhook", methods=["POST"])
-async def webhook():
-    if request.method == "POST":
-        update_data = request.get_json(force=True)
-        update = Update.de_json(update_data, application.bot)
-        try:
-            await application.process_update(update)
-        except Exception as e:
-            logger.error(f"Ошибка при обработке update: {e}")
-        return "ok"
-    else:
-        abort(405)
-
-# Регистрируем хендлеры
 def setup_handlers():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("strategy", strategy_command))
 
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    if request.method == "POST":
+        update_data = request.get_json(force=True)
+        update = Update.de_json(update_data, application.bot)
+        # Запускаем асинхронную обработку в фоне
+        asyncio.create_task(process_update_async(update))
+        return "ok"
+    else:
+        abort(405)
+
+async def process_update_async(update: Update):
+    try:
+        await application.process_update(update)
+    except Exception as e:
+        logger.error(f"Ошибка при обработке update: {e}")
+
 if __name__ == "__main__":
     setup_handlers()
 
+    import os
+    webhook_url = os.getenv("WEBHOOK_URL", "https://botupgraid.onrender.com/webhook")
+
     async def main():
-        webhook_url = "https://botupgraid.onrender.com/webhook"  # твой реальный URL
+        # Устанавливаем вебхук
         await application.bot.set_webhook(webhook_url)
-        logger.info("Webhook установлен: True")
+        logger.info(f"Webhook установлен: {webhook_url}")
 
         from hypercorn.asyncio import serve
         from hypercorn.config import Config
@@ -102,6 +102,4 @@ if __name__ == "__main__":
         logger.info("Запуск Flask-сервера...")
         await serve(app, config)
 
-    # Создаём и запускаем event loop вручную
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+    asyncio.run(main())
