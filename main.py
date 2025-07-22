@@ -1,7 +1,7 @@
 import logging
+import asyncio
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
-import asyncio
 
 TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
 
@@ -11,13 +11,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Создаем приложение бота
 application = ApplicationBuilder().token(TOKEN).build()
 
+# Множество для хранения включенных стратегий
 enabled_strategies = set()
 
+# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привет! Я твой трейдинг-бот. Используй /help для списка команд.")
 
+# Команда /help
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "Доступные команды:\n"
@@ -26,10 +30,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/strategy - Показать активные стратегии\n"
         "/strategy enable <название> - Включить стратегию\n"
         "/strategy disable <название> - Отключить стратегию\n"
-        "/check - Проверить активные стратегии\n"
     )
     await update.message.reply_text(text)
 
+# Команда /strategy
 async def strategy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if not args:
@@ -60,32 +64,13 @@ async def strategy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(f"Стратегия '{strategy_name}' не была активна.")
 
-async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not enabled_strategies:
-        await update.message.reply_text("Нет активных стратегий для проверки.")
-        return
-
-    messages = []
-    for strategy in enabled_strategies:
-        # Пример заглушки с логикой
-        msg = (
-            f"Стратегия '{strategy}': сигнал LONG с вероятностью 75%.\n"
-            "Обоснование: RSI на дневном таймфрейме показывает перепроданность."
-        )
-        messages.append(msg)
-
-    await update.message.reply_text("\n\n".join(messages))
-
+# Регистрируем хендлеры
 def setup_handlers():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("strategy", strategy_command))
-    application.add_handler(CommandHandler("check", check_command))
-
-def main():
-    setup_handlers()
-    # Запускаем polling (блокирующая операция)
-    application.run_polling()
 
 if __name__ == "__main__":
-    main()
+    setup_handlers()
+    # Запускаем бота в режиме polling
+    application.run_polling()
