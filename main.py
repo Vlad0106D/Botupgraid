@@ -10,13 +10,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Команда /help
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Доступные команды:\n/start — запуск\n/help — помощь")
+    await update.message.reply_text(
+        "Доступные команды:\n"
+        "/start — запуск\n"
+        "/help — помощь\n"
+        "/strategy — активные стратегии"
+    )
 
-# Создаем и запускаем приложение без asyncio.run()
+# Команда /strategy
+async def strategy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    active_strategies = [
+        "1. 📊 Комплексный технический анализ (RSI, MA, Momentum, Bollinger, OI, Capital Flow)"
+    ]
+    text = "Активные стратегии:\n" + "\n".join(active_strategies)
+    await update.message.reply_text(text)
+
+# Создаем и запускаем приложение
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("help", help_command))
+app.add_handler(CommandHandler("strategy", strategy_command))
 
 print("Бот запущен...")
-app.run_polling()  # запускаем напрямую, без asyncio.run
+app.run_polling()
