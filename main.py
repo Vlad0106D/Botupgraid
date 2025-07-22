@@ -13,21 +13,21 @@ COINS = {
     "XRP": "ripple",
 }
 
-# Получение исторических цен для расчёта RSI (14 периодов)
 async def fetch_prices(coin_id: str, days: int = 15):
     url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
     params = {"vs_currency": "usd", "days": days, "interval": "daily"}
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.get(url, params=params)
         resp.raise_for_status()
         data = resp.json()
-        prices = [p[1] for p in data["prices"]]
+        prices = [p[1] for p in data.get("prices", [])]
+        if not prices:
+            raise ValueError("Пустой список цен")
         return prices
 
-# Простая функция расчёта RSI
 def calculate_rsi(prices, period=14):
     if len(prices) < period + 1:
-        return None  # недостаточно данных
+        return None
     deltas = np.diff(prices)
     gains = np.where(deltas > 0, deltas, 0)
     losses = np.where(deltas < 0, -deltas, 0)
@@ -50,6 +50,8 @@ async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             current_price = prices[-1]
             results.append(f"{symbol}/USDT\nЦена: ${current_price:.2f}\nRSI(14): {rsi if rsi is not None else 'Недостаточно данных'}\n")
         except Exception as e:
+            # Логируем ошибку в консоль для дебага
+            print(f"Ошибка при получении данных по {symbol}/USDT: {e}")
             results.append(f"❌ Ошибка при получении данных по {symbol}/USDT: {e}")
 
     answer = "\n".join(results)
