@@ -1,40 +1,45 @@
 from flask import Flask
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from strategies import generate_signals
 import asyncio
 
-# --- Telegram TOKEN ---
+# --- Токен Telegram ---
 TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
 
-# --- Flask app ---
+# --- Flask ---
 app = Flask(__name__)
 
 @app.route("/")
 def index():
-    return "✅ Бот и Flask работают"
+    return "✅ Бот и веб-интерфейс работают"
 
-# --- Хендлер команды /start ---
+# --- Команда /start ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 Бот работает!")
+    await update.message.reply_text("🤖 Бот запущен и работает!")
 
-# --- Асинхронный запуск Telegram-бота ---
+# --- Команда /signal ---
+async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    signals, explanation, timestamp = generate_signals()
+    text = f"📊 Сигналы на {timestamp}:\n\n"
+    for pair, sig in signals.items():
+        reason = explanation.get(pair, "")
+        text += f"• {pair}: {sig} — {reason}\n"
+    await update.message.reply_text(text)
+
+# --- Главный запуск ---
 async def main():
     app_bot = ApplicationBuilder().token(TOKEN).build()
     app_bot.add_handler(CommandHandler("start", start))
-    await app_bot.initialize()
-    await app_bot.start()
-    await app_bot.updater.start_polling()
-    print("🤖 Бот запущен")
-    # НЕ await idle() — Render упадёт!
-    while True:
-        await asyncio.sleep(60)
+    app_bot.add_handler(CommandHandler("signal", signal))
 
-# --- Запуск Flask и бота ---
+    # Запуск Flask в фоне
+    loop = asyncio.get_event_loop()
+    loop.create_task(asyncio.to_thread(app.run, host="0.0.0.0", port=10000))
+
+    # Запуск Telegram-бота
+    await app_bot.run_polling()
+
+# --- Запуск ---
 if __name__ == "__main__":
-    import threading
-
-    # Flask в потоке
-    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
-
-    # Запуск асинхронного Telegram-бота
     asyncio.run(main())
