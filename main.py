@@ -84,6 +84,7 @@ if __name__ == "__main__":
     setup_handlers()
 
     async def main():
+        await application.initialize()  # <-- ВАЖНО: Инициализируем Application перед использованием
         webhook_url = "https://botupgraid.onrender.com/webhook"
         await application.bot.set_webhook(webhook_url)
         logger.info("Webhook установлен: True")
