@@ -1,44 +1,42 @@
-from flask import Flask
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from telegram import Update
-import threading
-import asyncio
+import os
+from flask import Flask, request
+from telegram import Update, Bot
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
-from strategies import generate_signals
+# 🔐 Твой токен
+TOKEN = "6499005496:AAELkXqJe63d3hu-sq4PtMv4vTt3eD7j2So"
+WEBHOOK_URL = "https://botupgraid.onrender.com/webhook"
 
-# 🔐 ТВОЙ ТОКЕН
-TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
-
-# Flask-приложение
+# Инициализация Flask и бота
 app = Flask(__name__)
+bot = Bot(token=TOKEN)
 
-@app.route("/")
-def index():
-    return "Бот и веб-интерфейс работают ✅"
-
-# Команды Telegram
+# --- Хэндлеры бота ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Бот запущен ✅")
+    await update.message.reply_text("✅ Бот работает через вебхук!")
 
-async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    signals, explanation, timestamp = generate_signals()
-    msg = f"📊 Сигналы на {timestamp}:\n\n"
-    for pair, action in signals.items():
-        reason = explanation.get(pair, "")
-        msg += f"{pair}: {action} — {reason}\n"
-    await update.message.reply_text(msg)
+async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(f"Ты написал: {update.message.text}")
 
-# Функция запуска Flask в отдельном потоке
-def run_flask():
-    app.run(host="0.0.0.0", port=10000)
+# --- Flask webhook endpoint ---
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    application.update_queue.put_nowait(update)
+    return "ok", 200
 
-# Основной запуск
-if __name__ == "__main__":
-    # Запускаем Flask в фоновом потоке
-    threading.Thread(target=run_flask).start()
+# --- Установка вебхука ---
+@app.route('/set_webhook')
+def set_webhook():
+    success = bot.set_webhook(WEBHOOK_URL)
+    return f"Webhook установлен: {success}"
 
-    # А Telegram-бот запускаем в главном потоке
-    application = ApplicationBuilder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("signal", signal))
-    application.run_polling()
+# --- Telegram application ---
+application = ApplicationBuilder().token(TOKEN).build()
+application.add_handler(CommandHandler("start", start))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+
+# --- Flask запуск ---
+if __name__ == '__main__':
+    print("🔗 Сервис запущен, открой /set_webhook один раз после деплоя")
+    app.run(host='0.0.0.0', port=10000)
