@@ -8,7 +8,6 @@ from telegram.ext import (
 
 TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
 
-# Простые команды для бота
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привет! Я работаю.")
 
@@ -16,19 +15,25 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Доступные команды:\n/start\n/help\n/strategies")
 
 async def strategies(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Заглушка — пока стратегий нет
     await update.message.reply_text("Нет активных стратегий.")
 
 async def run_bot():
-    application = ApplicationBuilder().token(TOKEN).build()
+    app = ApplicationBuilder().token(TOKEN).build()
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("strategies", strategies))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("strategies", strategies))
 
-    await application.run_polling()
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    print("Telegram bot started")
 
-# Простой aiohttp сервер для Render
+    # Ждем пока приложение не остановится (т.е. вечно)
+    await app.updater.idle()
+    await app.stop()
+    await app.shutdown()
+
 async def handle(request):
     return web.Response(text="Bot is running!")
 
@@ -36,20 +41,24 @@ async def run_webserver():
     app = web.Application()
     app.router.add_get('/', handle)
 
-    port = int(os.environ.get("PORT", 10000))  # Render задает порт в переменной окружения
+    port = int(os.environ.get("PORT", 10000))
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
     print(f"Webserver running on port {port}")
 
-    # Чтобы веб-сервер не завершился сразу
+    # Вечный цикл, чтобы веб-сервер не останавливался
     while True:
         await asyncio.sleep(3600)
 
 async def main():
-    # Запускаем бота и веб-сервер параллельно
-    await asyncio.gather(run_bot(), run_webserver())
+    # Запускаем веб-сервер и бота параллельно
+    bot_task = asyncio.create_task(run_bot())
+    web_task = asyncio.create_task(run_webserver())
+
+    await asyncio.gather(bot_task, web_task)
 
 if __name__ == "__main__":
+    # Не вызываем asyncio.run, т.к. в run_bot уже внутри event loop
     asyncio.run(main())
