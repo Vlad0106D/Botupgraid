@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from flask import Flask, request, abort
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
@@ -13,10 +14,9 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Инициализируем приложение Telegram бота
-app_telegram = ApplicationBuilder().token(TOKEN).build()
+# Создаем глобальное приложение telegram, но НЕ вызываем .build() здесь!
+application = ApplicationBuilder().token(TOKEN).build()
 
-# Структура для хранения включенных стратегий
 enabled_strategies = set()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -67,9 +67,9 @@ async def strategy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def webhook():
     if request.method == "POST":
         update_data = request.get_json(force=True)
-        update = Update.de_json(update_data, app_telegram.bot)
+        update = Update.de_json(update_data, application.bot)
         try:
-            await app_telegram.process_update(update)
+            await application.process_update(update)
         except Exception as e:
             logger.error(f"Ошибка при обработке update: {e}")
         return "ok"
@@ -77,19 +77,21 @@ async def webhook():
         abort(405)
 
 def setup_handlers():
-    app_telegram.add_handler(CommandHandler("start", start))
-    app_telegram.add_handler(CommandHandler("help", help_command))
-    app_telegram.add_handler(CommandHandler("strategy", strategy_command))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("strategy", strategy_command))
 
 if __name__ == "__main__":
+    import uvloop, asyncio
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+
     setup_handlers()
-    # Установка webhook
-    webhook_url = "https://botupgraid.onrender.com/webhook"
-    import asyncio
+
     async def main():
-        await app_telegram.bot.set_webhook(webhook_url)
+        webhook_url = "https://botupgraid.onrender.com/webhook"
+        await application.bot.set_webhook(webhook_url)
         logger.info("Webhook установлен: True")
-        # Запуск Flask через Hypercorn
+
         from hypercorn.asyncio import serve
         from hypercorn.config import Config
         config = Config()
