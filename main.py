@@ -2,7 +2,9 @@ import os
 import logging
 from quart import Quart, request
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+)
 
 TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
 WEBHOOK_URL = "https://botupgraid.onrender.com/webhook"
@@ -12,18 +14,22 @@ logging.basicConfig(level=logging.INFO)
 
 # Quart app
 app = Quart(__name__)
-telegram_app = None  # сюда позже передадим приложение Telegram
+telegram_app = None
 
+# Активные стратегии (в памяти)
+active_strategies = []
 
 @app.before_serving
 async def before_serving():
     global telegram_app
     telegram_app = ApplicationBuilder().token(TOKEN).build()
 
-    # Команды
+    # Регистрация команд
     telegram_app.add_handler(CommandHandler("start", start))
     telegram_app.add_handler(CommandHandler("help", help_command))
     telegram_app.add_handler(CommandHandler("strategy", strategy))
+    telegram_app.add_handler(CommandHandler("addstrategy", add_strategy))
+    telegram_app.add_handler(CommandHandler("removestrategy", remove_strategy))
 
     await telegram_app.initialize()
     await telegram_app.bot.set_webhook(WEBHOOK_URL)
@@ -56,11 +62,47 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Доступные команды:\n/start — запуск\n/strategy — активные стратегии")
+    await update.message.reply_text(
+        "Доступные команды:\n"
+        "/start — запуск\n"
+        "/strategy — список активных стратегий\n"
+        "/addstrategy Название — добавить стратегию\n"
+        "/removestrategy Название — удалить стратегию"
+    )
 
 
 async def strategy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Нет активных стратегий.")
+    if not active_strategies:
+        await update.message.reply_text("Нет активных стратегий.")
+    else:
+        strategies_text = "\n".join(f"• {s}" for s in active_strategies)
+        await update.message.reply_text(f"Активные стратегии:\n{strategies_text}")
+
+
+async def add_strategy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Укажи название стратегии. Пример: /addstrategy RSI-Momentum")
+        return
+
+    name = " ".join(context.args)
+    if name in active_strategies:
+        await update.message.reply_text(f"Стратегия '{name}' уже активна.")
+    else:
+        active_strategies.append(name)
+        await update.message.reply_text(f"Добавлена стратегия: {name}")
+
+
+async def remove_strategy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Укажи название стратегии. Пример: /removestrategy RSI-Momentum")
+        return
+
+    name = " ".join(context.args)
+    if name in active_strategies:
+        active_strategies.remove(name)
+        await update.message.reply_text(f"Удалена стратегия: {name}")
+    else:
+        await update.message.reply_text(f"Стратегия '{name}' не найдена.")
 
 
 if __name__ == "__main__":
