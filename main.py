@@ -14,19 +14,18 @@ def index():
 async def start(update, context):
     await update.message.reply_text("Бот работает ✅")
 
-def run_bot():
-    async def main():
-        app_bot = ApplicationBuilder().token(TOKEN).build()
-        app_bot.add_handler(CommandHandler("start", start))
-        await app_bot.run_polling()
-    
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(main())
-
-if __name__ == "__main__":
-    # Запускаем Telegram-бота в отдельном потоке
-    threading.Thread(target=run_bot, daemon=True).start()
-
+def run_flask():
     print("🌐 Flask запускается...")
     app.run(host="0.0.0.0", port=10000)
+
+async def run_bot():
+    app_bot = ApplicationBuilder().token(TOKEN).build()
+    app_bot.add_handler(CommandHandler("start", start))
+    await app_bot.run_polling()
+
+if __name__ == "__main__":
+    # Flask в отдельном потоке
+    threading.Thread(target=run_flask, daemon=True).start()
+
+    # Бот в основном потоке (asyncio.run можно вызвать только из главного потока)
+    asyncio.run(run_bot())
