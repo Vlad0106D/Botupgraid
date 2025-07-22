@@ -1,7 +1,7 @@
 import logging
 import asyncio
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
 
 TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
 
@@ -11,10 +11,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Создаем приложение бота
 application = ApplicationBuilder().token(TOKEN).build()
 
-# Множество активных стратегий
 enabled_strategies = set()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -28,13 +26,13 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/strategy - Показать активные стратегии\n"
         "/strategy enable <название> - Включить стратегию\n"
         "/strategy disable <название> - Отключить стратегию\n"
+        "/check - Проверить активные стратегии\n"
     )
     await update.message.reply_text(text)
 
 async def strategy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if not args:
-        # Просто показать активные стратегии
         if not enabled_strategies:
             await update.message.reply_text("Нет активных стратегий.")
         else:
@@ -62,13 +60,32 @@ async def strategy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(f"Стратегия '{strategy_name}' не была активна.")
 
-def main():
+async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not enabled_strategies:
+        await update.message.reply_text("Нет активных стратегий для проверки.")
+        return
+
+    messages = []
+    for strategy in enabled_strategies:
+        # Здесь должна быть реальная логика анализа
+        msg = (
+            f"Стратегия '{strategy}': сигнал LONG с вероятностью 75%.\n"
+            "Обоснование: RSI на дневном таймфрейме показывает перепроданность."
+        )
+        messages.append(msg)
+
+    await update.message.reply_text("\n\n".join(messages))
+
+def setup_handlers():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("strategy", strategy_command))
+    application.add_handler(CommandHandler("check", check_command))
 
-    logger.info("Запуск бота...")
-    application.run_polling()
+async def main():
+    setup_handlers()
+    # Для работы через polling
+    await application.run_polling()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
