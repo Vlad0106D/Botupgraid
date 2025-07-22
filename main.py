@@ -1,76 +1,76 @@
+import os
 import logging
-import asyncio
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
+from quart import Quart, request, jsonify
+from telegram import Update, Bot
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
+TOKEN = os.getenv("TOKEN", "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Например: https://yourapp.onrender.com
 
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
-logger = logging.getLogger(__name__)
 
-# Создаем приложение бота
-application = ApplicationBuilder().token(TOKEN).build()
+app = Quart(__name__)
+bot = Bot(token=TOKEN)
+application = Application.builder().token(TOKEN).build()
 
-# Множество для хранения включенных стратегий
-enabled_strategies = set()
+# --- Обработчики команд ---
 
-# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Я твой трейдинг-бот. Используй /help для списка команд.")
+    await update.message.reply_text("Привет! Я готов к работе.")
 
-# Команда /help
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "Доступные команды:\n"
-        "/start - Запустить бота\n"
-        "/help - Помощь по командам\n"
-        "/strategy - Показать активные стратегии\n"
-        "/strategy enable <название> - Включить стратегию\n"
-        "/strategy disable <название> - Отключить стратегию\n"
+    help_text = (
+        "/start - Запуск бота\n"
+        "/help - Помощь\n"
+        "/check - Проверка стратегий"
     )
-    await update.message.reply_text(text)
+    await update.message.reply_text(help_text)
 
-# Команда /strategy
-async def strategy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    args = context.args
-    if not args:
-        if not enabled_strategies:
-            await update.message.reply_text("Нет активных стратегий.")
-        else:
-            await update.message.reply_text(
-                "Активные стратегии:\n" + "\n".join(enabled_strategies)
-            )
+async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Здесь добавь логику анализа, сейчас просто пример
+    await update.message.reply_text("Проверка стратегий: активных стратегий нет.")
+
+# Регистрируем команды
+application.add_handler(CommandHandler("start", start))
+application.add_handler(CommandHandler("help", help_command))
+application.add_handler(CommandHandler("check", check))
+
+# --- Webhook endpoint ---
+
+@app.route('/webhook', methods=['POST'])
+async def webhook():
+    try:
+        json_data = await request.get_json()
+        update = Update.de_json(json_data, bot)
+        await application.process_update(update)
+    except Exception as e:
+        logging.error(f"Ошибка при обработке update: {e}")
+    return jsonify({"status": "ok"})
+
+# --- Простой роут для проверки работы сервера ---
+
+@app.route('/')
+async def index():
+    return "Бот запущен и работает!"
+
+# --- Установка webhook и запуск сервера ---
+
+async def set_webhook():
+    if not WEBHOOK_URL:
+        logging.error("Переменная окружения WEBHOOK_URL не задана")
         return
+    webhook_full_url = f"{WEBHOOK_URL}/webhook"
+    await bot.set_webhook(webhook_full_url)
+    logging.info(f"Webhook установлен на {webhook_full_url}")
 
-    action = args[0].lower()
-    if action not in ("enable", "disable"):
-        await update.message.reply_text("Используйте: /strategy enable <название> или /strategy disable <название>")
-        return
-    if len(args) < 2:
-        await update.message.reply_text("Пожалуйста, укажите название стратегии.")
-        return
+async def main():
+    await set_webhook()
+    port = int(os.getenv("PORT", 5000))
+    await app.run_task(host="0.0.0.0", port=port)
 
-    strategy_name = args[1].lower()
-    if action == "enable":
-        enabled_strategies.add(strategy_name)
-        await update.message.reply_text(f"Стратегия '{strategy_name}' включена.")
-    else:
-        if strategy_name in enabled_strategies:
-            enabled_strategies.remove(strategy_name)
-            await update.message.reply_text(f"Стратегия '{strategy_name}' отключена.")
-        else:
-            await update.message.reply_text(f"Стратегия '{strategy_name}' не была активна.")
-
-# Регистрируем хендлеры
-def setup_handlers():
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("strategy", strategy_command))
-
-if __name__ == "__main__":
-    setup_handlers()
-    # Запускаем бота в режиме polling
-    application.run_polling()
+if __name__ == '__main__':
+    import asyncio
+    asyncio.run(main())
