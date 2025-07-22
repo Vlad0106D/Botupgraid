@@ -2,24 +2,23 @@ from flask import Flask
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from telegram import Update
 import threading
-import asyncio
 
 from strategies import generate_signals
 
 # 🔐 ТВОЙ ТОКЕН
 TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
 
+# Flask-приложение
 app = Flask(__name__)
 
 @app.route("/")
 def index():
     return "Бот и веб-интерфейс работают ✅"
 
-# Команда /start
+# Команды Telegram
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Бот запущен ✅")
 
-# Команда /signal
 async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     signals, explanation, timestamp = generate_signals()
     msg = f"📊 Сигналы на {timestamp}:\n\n"
@@ -28,20 +27,18 @@ async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += f"{pair}: {action} — {reason}\n"
     await update.message.reply_text(msg)
 
-# Асинхронный запуск бота
-async def setup_bot():
-    application = ApplicationBuilder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("signal", signal))
-    await application.run_polling()
+# Функция запуска Telegram-бота (в отдельном потоке, без asyncio)
+def run_telegram_bot():
+    app_bot = ApplicationBuilder().token(TOKEN).build()
+    app_bot.add_handler(CommandHandler("start", start))
+    app_bot.add_handler(CommandHandler("signal", signal))
+    app_bot.run_polling()  # <- блокирующий вызов, безопасен в отдельном потоке
 
-# Запуск Flask в отдельном потоке
+# Запуск Flask
 def run_flask():
     app.run(host="0.0.0.0", port=10000)
 
-# Основной запуск
+# Главный запуск
 if __name__ == "__main__":
     threading.Thread(target=run_flask).start()
-    loop = asyncio.get_event_loop()
-    loop.create_task(setup_bot())
-    loop.run_forever()
+    threading.Thread(target=run_telegram_bot).start()
