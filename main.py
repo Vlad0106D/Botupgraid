@@ -1,105 +1,61 @@
-import asyncio
+import os
 import logging
-import httpx
-import numpy as np
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+import asyncio
+from aiohttp import web
+from telegram import Update, Bot
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, \
+    Dispatcher, aiohttp as tg_aiohttp
 
-# === Настройки ===
 TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
-CHAT_ID = 776505127
+BOT_URL = "https://your_render_domain.onrender.com"  # замените на ваш публичный URL
 
-COIN_IDS = ["bitcoin", "ethereum", "solana", "ripple"]
-SYMBOLS = {
-    "bitcoin": "BTC/USDT",
-    "ethereum": "ETH/USDT",
-    "solana": "SOL/USDT",
-    "ripple": "XRP/USDT"
-}
+logging.basicConfig(level=logging.INFO)
 
-# === Логгирование ===
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-
-# === Получение исторических данных с CoinGecko ===
-async def fetch_price_history(coin_id, days=7, interval='hourly'):
-    url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
-    params = {
-        "vs_currency": "usd",
-        "days": days,
-        "interval": interval
-    }
-
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, params=params, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            prices = [price[1] for price in data["prices"]]
-            return prices
-    except Exception as e:
-        print(f"Ошибка при получении данных {coin_id}: {e}")
-        return []
-
-# === Простая стратегия: анализ скользящих средних (MA) ===
-def analyze_moving_average(prices):
-    if len(prices) < 50:
-        return "none"
-
-    ma20 = np.mean(prices[-20:])
-    ma50 = np.mean(prices[-50:])
-
-    if ma20 > ma50:
-        return "long"
-    elif ma20 < ma50:
-        return "short"
-    else:
-        return "none"
-
-# === Командный обработчик /start ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 Привет! Я трейдинг-бот. Используй команду /check для анализа рынка.")
+    await update.message.reply_text("Привет! Я бот на webhook.")
 
-# === Командный обработчик /check ===
 async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📊 Анализирую рынок...")
+    await update.message.reply_text("Команда /check пока не реализована.")
 
-    signals = await check_all_strategies()
-    await update.message.reply_text(signals)
+async def handle(request):
+    # Получаем объект update из POST-запроса Telegram
+    bot = request.app['bot']
+    dispatcher = request.app['dispatcher']
+    json_data = await request.json()
+    update = Update.de_json(json_data, bot)
+    await dispatcher.process_update(update)
+    return web.Response()
 
-# === Анализ всех монет ===
-async def check_all_strategies():
-    result_lines = []
+async def on_startup(app):
+    bot = app['bot']
+    # Устанавливаем webhook (с HTTPS)
+    await bot.set_webhook(f"{BOT_URL}/webhook")
+    logging.info("Webhook установлен")
 
-    for coin_id in COIN_IDS:
-        symbol = SYMBOLS.get(coin_id, coin_id.upper())
-        prices = await fetch_price_history(coin_id)
+async def on_cleanup(app):
+    bot = app['bot']
+    await bot.delete_webhook()
+    logging.info("Webhook удален")
 
-        if not prices:
-            result_lines.append(f"❌ Ошибка при получении данных по {symbol}")
-            continue
+async def init_app():
+    app = web.Application()
+    bot = Bot(token=TOKEN)
+    dispatcher = Dispatcher(bot, None, workers=4, use_context=True)
 
-        ma_signal = analyze_moving_average(prices)
-        if ma_signal == "long":
-            result_lines.append(f"📈 {symbol}: LONG (MA20 > MA50)")
-        elif ma_signal == "short":
-            result_lines.append(f"📉 {symbol}: SHORT (MA20 < MA50)")
-        else:
-            result_lines.append(f"⏸️ {symbol}: Нет сигнала (MA20 ≈ MA50)")
+    dispatcher.add_handler(CommandHandler("start", start))
+    dispatcher.add_handler(CommandHandler("check", check))
 
-    return "\n".join(result_lines)
+    app['bot'] = bot
+    app['dispatcher'] = dispatcher
 
-# === Главная функция ===
-async def main():
-    app = ApplicationBuilder().token(TOKEN).build()
+    app.router.add_post('/webhook', handle)
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("check", check))
+    app.on_startup.append(on_startup)
+    app.on_cleanup.append(on_cleanup)
 
-    print("✅ Бот запущен")
-    await app.run_polling()
+    return app
 
-if __name__ == "__main__":
-    asyncio.run(main())
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 8000))
+    app = asyncio.run(init_app())
+    web.run_app(app, port=port)
