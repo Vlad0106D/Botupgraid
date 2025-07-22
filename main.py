@@ -1,56 +1,63 @@
-from flask import Flask, request
-from telegram import Bot, Update
-from telegram.ext import Dispatcher, CommandHandler, MessageHandler, filters
 import logging
+from flask import Flask, request, abort
+from telegram import Update, Bot
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
-# Твой токен Telegram-бота
 TOKEN = "6437536295:AAG9dcbMBmnDb6s0cQZCUJsIaT1skJfPO8s"
-
-# URL твоего развернутого приложения на Render (здесь надо заменить на твой реальный)
 APP_URL = "https://botupgraid.onrender.com"
 
 app = Flask(__name__)
 
-# Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
 bot = Bot(token=TOKEN)
-dispatcher = Dispatcher(bot, None, workers=0)
+application = ApplicationBuilder().token(TOKEN).build()
 
-# Обработчик команды /start
-def start(update, context):
-    update.message.reply_text("Привет! Бот работает на вебхуках.")
+# Команда /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Привет! Бот работает на вебхуках.")
 
-# Эхо-обработчик для любых текстовых сообщений
-def echo(update, context):
-    update.message.reply_text(f"Ты написал: {update.message.text}")
+# Эхо
+async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(f"Ты написал: {update.message.text}")
 
-dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), echo))
+application.add_handler(CommandHandler("start", start))
+application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), echo))
 
-# Роут для получения апдейтов от Telegram (вебхук)
+# Flask роут для получения апдейтов (вебхук)
 @app.route(f"/webhook/{TOKEN}", methods=["POST"])
 def webhook():
-    json_update = request.get_json(force=True)
-    update = Update.de_json(json_update, bot)
-    dispatcher.process_update(update)
-    return "OK"
+    if request.method == "POST":
+        update = Update.de_json(request.get_json(force=True), bot)
+        application.create_task(application.update_queue.put(update))
+        return "OK"
+    else:
+        abort(405)
 
 # Роут для установки вебхука
 @app.route("/set_webhook")
 def set_webhook():
-    url = f"{APP_URL}/webhook/{TOKEN}"
-    success = bot.setWebhook(url)
+    webhook_url = f"{APP_URL}/webhook/{TOKEN}"
+    success = bot.setWebhook(webhook_url)
     return f"Webhook установлен: {success}"
 
-# Роут для удаления вебхука (если нужно)
+# Роут для удаления вебхука
 @app.route("/delete_webhook")
 def delete_webhook():
     success = bot.deleteWebhook()
     return f"Webhook удалён: {success}"
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    import asyncio
+    # Запускаем в отдельном таске бота
+    loop = asyncio.get_event_loop()
+    loop.create_task(application.initialize())
+    loop.create_task(application.start())
+    try:
+        app.run(host="0.0.0.0", port=10000)
+    finally:
+        loop.run_until_complete(application.stop())
+        loop.run_until_complete(application.shutdown())
