@@ -1,61 +1,52 @@
-import os
 import logging
 import asyncio
-from aiohttp import web
-from telegram import Update, Bot
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, \
-    Dispatcher, aiohttp as tg_aiohttp
+
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from fastapi import FastAPI
+import uvicorn
 
 TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
-BOT_URL = "https://your_render_domain.onrender.com"  # замените на ваш публичный URL
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 
+# FastAPI app для Render (чтобы порт был занят)
+app_fastapi = FastAPI()
+
+@app_fastapi.get("/")
+async def root():
+    return {"status": "ok"}
+
+# Telegram ботовские хендлеры
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Я бот на webhook.")
+    await update.message.reply_text("Бот запущен! Напиши /check для проверки.")
 
 async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Команда /check пока не реализована.")
+    await update.message.reply_text("Команда /check сработала — бот живой!")
 
-async def handle(request):
-    # Получаем объект update из POST-запроса Telegram
-    bot = request.app['bot']
-    dispatcher = request.app['dispatcher']
-    json_data = await request.json()
-    update = Update.de_json(json_data, bot)
-    await dispatcher.process_update(update)
-    return web.Response()
+async def main():
+    # Создаем Telegram Application
+    telegram_app = ApplicationBuilder().token(TOKEN).build()
 
-async def on_startup(app):
-    bot = app['bot']
-    # Устанавливаем webhook (с HTTPS)
-    await bot.set_webhook(f"{BOT_URL}/webhook")
-    logging.info("Webhook установлен")
+    # Регистрируем команды
+    telegram_app.add_handler(CommandHandler("start", start))
+    telegram_app.add_handler(CommandHandler("check", check))
 
-async def on_cleanup(app):
-    bot = app['bot']
-    await bot.delete_webhook()
-    logging.info("Webhook удален")
+    # Запускаем Telegram polling и веб-сервер FastAPI параллельно
+    # uvicorn.run блокирующий, поэтому запускаем его через asyncio.create_task и uvicorn.Server
+    config = uvicorn.Config(app_fastapi, host="0.0.0.0", port=8000, log_level="info")
+    server = uvicorn.Server(config)
 
-async def init_app():
-    app = web.Application()
-    bot = Bot(token=TOKEN)
-    dispatcher = Dispatcher(bot, None, workers=4, use_context=True)
+    telegram_task = asyncio.create_task(telegram_app.run_polling())
+    uvicorn_task = asyncio.create_task(server.serve())
 
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(CommandHandler("check", check))
+    print("✅ Бот запущен и веб-сервер на порту 8000 работает")
 
-    app['bot'] = bot
-    app['dispatcher'] = dispatcher
+    # Ждем оба таска (бот и веб-сервер)
+    await asyncio.gather(telegram_task, uvicorn_task)
 
-    app.router.add_post('/webhook', handle)
-
-    app.on_startup.append(on_startup)
-    app.on_cleanup.append(on_cleanup)
-
-    return app
-
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 8000))
-    app = asyncio.run(init_app())
-    web.run_app(app, port=port)
+if __name__ == "__main__":
+    asyncio.run(main())
