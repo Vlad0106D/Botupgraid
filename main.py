@@ -7,7 +7,8 @@ import asyncio
 # Импорт стратегии
 from strategies import generate_signals
 
-TOKEN = "твой_токен_бота"
+# 🔐 ТВОЙ ТОКЕН
+TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
 
 app = Flask(__name__)
 
