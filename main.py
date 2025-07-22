@@ -1,7 +1,7 @@
 import logging
-import asyncio
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
+import asyncio
 
 TOKEN = "7753750626:AAECEmbPksDUXV1KXrAgwE6AO1wZxdCMxVo"
 
@@ -67,7 +67,7 @@ async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     messages = []
     for strategy in enabled_strategies:
-        # Здесь должна быть реальная логика анализа
+        # Пример заглушки с логикой
         msg = (
             f"Стратегия '{strategy}': сигнал LONG с вероятностью 75%.\n"
             "Обоснование: RSI на дневном таймфрейме показывает перепроданность."
@@ -82,10 +82,10 @@ def setup_handlers():
     application.add_handler(CommandHandler("strategy", strategy_command))
     application.add_handler(CommandHandler("check", check_command))
 
-async def main():
+def main():
     setup_handlers()
-    # Для работы через polling
-    await application.run_polling()
+    # Запускаем polling (блокирующая операция)
+    application.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
