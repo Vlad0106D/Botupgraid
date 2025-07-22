@@ -20,10 +20,11 @@ async def fetch_prices(coin_id: str, days: int = 15):
         resp = await client.get(url, params=params)
         resp.raise_for_status()
         data = resp.json()
-        prices = [p[1] for p in data.get("prices", [])]
+        print(f"Ответ для {coin_id}: ключи {list(data.keys())}")
+        prices = data.get("prices")
         if not prices:
-            raise ValueError("Пустой список цен")
-        return prices
+            raise ValueError("Пустой список цен 'prices'")
+        return [p[1] for p in prices]
 
 def calculate_rsi(prices, period=14):
     if len(prices) < period + 1:
@@ -40,7 +41,7 @@ def calculate_rsi(prices, period=14):
     return round(rsi, 2)
 
 async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Начинаю анализ по парам...")
+    await update.message.reply_text("Начинаю анализ...")
 
     results = []
     for symbol, coin_id in COINS.items():
@@ -48,17 +49,19 @@ async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             prices = await fetch_prices(coin_id)
             rsi = calculate_rsi(prices)
             current_price = prices[-1]
-            results.append(f"{symbol}/USDT\nЦена: ${current_price:.2f}\nRSI(14): {rsi if rsi is not None else 'Недостаточно данных'}\n")
+            results.append(
+                f"{symbol}/USDT\nЦена: ${current_price:.2f}\nRSI(14): {rsi if rsi is not None else 'Недостаточно данных'}\n"
+            )
         except Exception as e:
-            # Логируем ошибку в консоль для дебага
             print(f"Ошибка при получении данных по {symbol}/USDT: {e}")
             results.append(f"❌ Ошибка при получении данных по {symbol}/USDT: {e}")
 
-    answer = "\n".join(results)
-    await update.message.reply_text(answer)
+    await update.message.reply_text("\n".join(results))
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Я бот для технического анализа. Используй команду /check для анализа.")
+    await update.message.reply_text(
+        "Привет! Используй /check для технического анализа."
+    )
 
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
@@ -66,7 +69,7 @@ async def main():
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("check", check_command))
 
-    print("✅ Бот запущен")
+    print("Бот запущен")
     await app.run_polling()
 
 if __name__ == "__main__":
